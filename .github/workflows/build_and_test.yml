@@ -60,6 +60,10 @@ jobs:
     - name: Checkout Kong source code
       uses: actions/checkout@v4
 
+    - name: Create runtime data dir
+      run: |
+          sudo mkdir -m 777 /var/run/kong
+
     - name: Lookup build cache
       id: cache-deps
       uses: actions/cache@v3
@@ -92,10 +96,6 @@ jobs:
 
     - name: Check labeler configuration
       run: scripts/check-labeler.pl .github/labeler.yml
-
-    - name: Create runtime data dir
-      run: |
-          sudo mkdir -m 777 /var/run/kong
 
     - name: Unit tests
       env:
@@ -167,6 +167,10 @@ jobs:
     steps:
     - name: Checkout Kong source code
       uses: actions/checkout@v4
+
+    - name: Create runtime data dir
+      run: |
+          sudo mkdir -m 777 /var/run/kong
 
     - name: Lookup build cache
       id: cache-deps
@@ -276,6 +280,10 @@ jobs:
     - name: Checkout Kong source code
       uses: actions/checkout@v4
 
+    - name: Create runtime data dir
+      run: |
+          sudo mkdir -m 777 /var/run/kong
+
     - name: Lookup build cache
       id: cache-deps
       uses: actions/cache@v3
@@ -342,6 +350,10 @@ jobs:
     - name: Checkout Kong source code
       uses: actions/checkout@v4
 
+    - name: Create runtime data dir
+      run: |
+          sudo mkdir -m 777 /var/run/kong
+
     - name: Lookup build cache
       id: cache-deps
       uses: actions/cache@v3
@@ -394,6 +406,10 @@ jobs:
     steps:
     - name: Checkout source code
       uses: actions/checkout@v4
+
+    - name: Create runtime data dir
+      run: |
+          sudo mkdir -m 777 /var/run/kong
 
     - name: Install requirements
       run: |
