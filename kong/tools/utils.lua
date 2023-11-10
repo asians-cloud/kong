@@ -963,6 +963,7 @@ end
 _M.topological_sort = topological_sort
 
 function _M.get_runtime_data_path(prefix)
+  local prefix = pl_path.normpath(prefix)
   -- Path used for runtime data such as unix domain sockets
   local prefix_hash = string.sub(ngx.md5(prefix), 1, 7)
   return fmt("/var/run/kong/%s", prefix_hash)
