@@ -23,6 +23,7 @@ lua_shared_dict kong_db_cache               ${{MEM_CACHE_SIZE}};
 lua_shared_dict kong_db_cache_miss          12m;
 lua_shared_dict kong_secrets                5m;
 
+
 underscores_in_headers on;
 > if ssl_ciphers then
 ssl_ciphers ${{SSL_CIPHERS}};
@@ -477,6 +478,7 @@ server {
             Kong.serve_cluster_listener()
         }
     }
+
 }
 > end -- role == "control_plane"
 
