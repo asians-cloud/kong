@@ -1,0 +1,391 @@
+diff --git a/kong/error_handlers.lua b/kong/error_handlers.lua
+index ee5aae684..c3c64e741 100644
+--- a/kong/error_handlers.lua
++++ b/kong/error_handlers.lua
+@@ -19,52 +19,122 @@ local BODIES = {
+   [413] = "Payload too large",
+   [414] = "URI too long",
+   [417] = "Expectation failed",
++  [425] = "Too Early",
++  [426] = "Upgrade required",
++  [428] = "Precondition required",
++  [429] = "Too many requests",
+   [494] = "Request header or cookie too large",
+   [500] = "An unexpected error occurred",
+   [502] = "An invalid response was received from the upstream server",
+   [503] = "The upstream server is currently unavailable",
+   [504] = "The upstream server is timing out",
++
++  [580] = "An unexpected error occurred",
++  [581] = "An unexpected error occurred",
++  [582] = "An invalid response was received from the upstream server",
++  [583] = "The upstream server is currently unavailable",
++  [584] = "Gateway Timeout",
++  [585] = "HTTP Version Not Supported",
++  [586] = "Variant Also Negotiates",
++  [587] = "Insufficient Storage",
++  [588] = "Loop Detected",
++  default = "The upstream server responded with %d"
++
+ }
+ 
+ 
++local function interp(s, tab)
++    return (s:gsub('($%b{})', function(w) return tab[w:sub(3, -2)] or w end))
++end
++
++local function read_file(path)
++    local f = io.open(path, "r") -- r read mode and b binary mode
++    if not f then return nil end
++    local content = f:read("*a") -- *a or *all reads the whole file
++    f:close()
++    return content
++end
++
++
+ local get_body
+ do
+   local DEFAULT_FMT = "The upstream server responded with %d"
++  
++  get_body = function(ctx)
++    local status = kong.response.get_status()
++    local accept_header = kong.request.get_header(ACCEPT)
++    if accept_header == nil then
++      accept_header = kong.request.get_header(CONTENT_TYPE)
++      if accept_header == nil then
++        accept_header = kong.configuration.error_default_type
++      end
++    end
++
++    local mime_type = utils.get_response_type(accept_header)
++
++    if status >= 500 and status < 510 then
++      status = status + 80
++    end
+ 
+-  get_body = function(status)
+-    local body = BODIES[status]
++    local message = BODIES[status] or fmt(DEFAULT_FMT, status)
++
++    -- Hack to output CSS in error page
++    local path = ngx.var.request_uri
++    if path == "/g-in/4xx.css" then
++      local resource_4xx = "/usr/local/share/lua/5.1/kong/templates/4xx.css"
++      message = read_file(resource_4xx)
++      status = 200
++      mime_type = "text/css; charset=utf-8"
++    end
+ 
+-    if body then
+-      return body
++    if accept_header == "*/*" or string.find(accept_header, "html") then
++      accept_header = "text/html"
++      local accept_lang = kong.request.get_header("Accept-Language")
++      local template_4xx = ""
++      
++      if accept_lang and string.find(accept_lang, 'zh')
++      then
++          template_4xx = "/usr/local/share/lua/5.1/kong/templates/kong_error_4xx-zh.html"
++      else
++          template_4xx = "/usr/local/share/lua/5.1/kong/templates/kong_error_4xx-en.html"
++      end
++      local template_5xx = "/usr/local/share/lua/5.1/kong/templates/kong_error_5xx.html"
++      local template_error = (status < 500) and template_4xx or template_5xx
++      local tmpl = read_file(template_error)
++      local headers = ngx.req.get_headers()
++      local status_text = ctx.MESSAGE or BODIES["s" .. status] or fmt(BODIES.default, status)
++      local request = ngx.var.request_method .. " " .. ngx.var.request_uri .. " " .. ngx.var.server_protocol
++
++      local user_agent = headers['user-agent']
++      if user_agent == nil then
++        user_agent = "unknown"
++      elseif type(user_agent) == 'table' then
++        user_agent = table.concat(user_agent, ", ")
++      end
++
++      local tmpl_res = interp(tmpl, {
++        status_text = status_text, status = status, remote_addr =  ngx.var.remote_addr,
++        host = headers["host"], http_referer = headers['referer'] or '(none)',
++        hostname = kong.node.get_hostname(), date_local = ngx.http_time(ngx.req.start_time()),
++        request = request, user_agent = user_agent
++      })
++      message = tmpl_res or fmt(BODIES.default, status)
+     end
+ 
+-    body = fmt(DEFAULT_FMT, status)
+-    BODIES[status] = body
++    return message, status, accept_header, mime_type
+ 
+-    return body
+   end
+ end
+ 
+ 
+ return function(ctx)
+-  local accept_header = kong.request.get_header(ACCEPT)
+-  if accept_header == nil then
+-    accept_header = kong.request.get_header(CONTENT_TYPE)
+-    if accept_header == nil then
+-      accept_header = kong.configuration.error_default_type
+-    end
+-  end
+-
+-  local status = kong.response.get_status()
+-  local message = get_body(status)
++  local message, status, accept_header, mime_type = get_body(ctx)
+ 
+   local headers
+   if find(accept_header, TYPE_GRPC, nil, true) == 1 then
+     message = { message = message }
+ 
+   else
+-    local mime_type = utils.get_response_type(accept_header)
+-    message = fmt(utils.get_error_template(mime_type), message)
+     headers = { [CONTENT_TYPE] = mime_type }
+ 
+   end
+diff --git a/kong/runloop/certificate.lua b/kong/runloop/certificate.lua
+index 53da6b3d8..b76a82836 100644
+--- a/kong/runloop/certificate.lua
++++ b/kong/runloop/certificate.lua
+@@ -4,7 +4,7 @@ local mlcache = require "kong.resty.mlcache"
+ local new_tab = require "table.new"
+ local openssl_x509_store = require "resty.openssl.x509.store"
+ local openssl_x509 = require "resty.openssl.x509"
+-
++local utils = require "kong.tools.utils"
+ 
+ local ngx_log     = ngx.log
+ local ERR         = ngx.ERR
+@@ -218,12 +218,58 @@ local function get_certificate(pk, sni_name)
+ end
+ 
+ 
++local function remove_port_from_sni(sni)
++  local sni_without_port, _ = sni:match("(.+):([0-9]+)$")
++  if not sni_without_port then
++    return sni
++  end
++
++  return sni_without_port
++end
++
++local function domain_checker(sni)
++    return string.match(sni, '^[%d%a_.-]+$') ~= nil and -- check if the string only contains digits/letters/_/./-, one or more
++           string.sub(sni, 0, 1) ~= '.' and             -- check if the first char is not '.'
++           string.sub(sni, -1) ~= '.' and               -- check if the last char is not '.'
++           string.find(sni, '%.%.') == nil and          -- check if there are 2 consecutive dots in the string
++           string.find(sni, '%.') ~= nil                -- check if there is at least one dot
++end
++
++
++
++
++local function validate_sni(sni)
++  -- length of string must be greater than 2
++  if #sni < 2 then
++    return false
++  end
++
++  -- if it's a wildcard, remove the prefix
++  local _, without_prefix = sni:match("(%*%.)(.+)$")
++  if without_prefix then
++    sni = without_prefix
++  end
++
++  -- check if it's a valid domain name and that it's not an IP address
++  local ip = utils.normalize_ip(sni)
++  return domain_checker(sni) and not ip
++end
++
++
+ local function find_certificate(sni)
+   if not sni then
+     log(DEBUG, "no SNI provided by client, serving default SSL certificate")
+     return default_cert_and_key
+   end
+ 
++  sni = remove_port_from_sni(sni)
++
++  -- check for SNI Attack
++  if not validate_sni(sni) then
++    log(ERR, "SNI Attack")
++    return default_cert_and_key
++  end
++
+   local sni_wild_pref, sni_wild_suf = produce_wild_snis(sni)
+ 
+   local bulk = mlcache.new_bulk(4)
+diff --git a/kong/runloop/handler.lua b/kong/runloop/handler.lua
+index 14a626f3b..169cace94 100644
+--- a/kong/runloop/handler.lua
++++ b/kong/runloop/handler.lua
+@@ -48,6 +48,8 @@ local clear_header      = ngx.req.clear_header
+ local http_version      = ngx.req.http_version
+ local escape            = require("kong.tools.uri").escape
+ local encode            = require("string.buffer").encode
++local PHASES            = require("kong.global").phases
++local kong_error_handlers = require "kong.error_handlers"
+ 
+ 
+ local is_http_module   = subsystem == "http"
+@@ -1192,6 +1194,14 @@ return {
+       ctx.scheme = var.scheme
+       ctx.request_uri = var.request_uri
+ 
++      -- Detect host is IP
++      if string.find(var.host, "fr5.net") or string.find(var.host, "yk1.net") or string.find(var.host, "lw6.net") or string.find(var.host, "w15.net") or string.find(var.host, "localhost") or utils.normalize_ip(var.host) then
++        if var.request_uri == "/ok" then
++          kong.ctx.shared.skip_log = true
++          kong.response.exit(200, "OK")
++        end
++      end
++
+       -- trace router
+       local span = instrumentation.router()
+ 
+@@ -1205,7 +1215,12 @@ return {
+           span:finish()
+         end
+ 
+-        return kong.response.error(404, "no Route matched with those values")
++        ctx.KONG_PHASE = PHASES.error
++        ctx.MESSAGE = "no Route matched with those values"
++        ctx.service = service
++        ctx.route = route
++        ngx.status = 425
++        return kong_error_handlers(ctx)
+       end
+ 
+       -- ends tracing span
+@@ -1267,15 +1282,23 @@ return {
+ 
+       local protocols = route.protocols
+       if (protocols and protocols.https and not protocols.http and
+-          forwarded_proto ~= "https")
++          forwarded_proto ~= "https" and sub(ctx.request_uri,1,string.len("/.well-known/acme-challenge/")) ~= "/.well-known/acme-challenge/")
+       then
+         local redirect_status_code = route.https_redirect_status_code or 426
+ 
+         if redirect_status_code == 426 then
+-          return kong.response.error(426, "Please use HTTPS protocol", {
+-            ["Connection"] = "Upgrade",
+-            ["Upgrade"]    = "TLS/1.2, HTTP/1.1",
+-          })
++          ctx.KONG_PHASE = PHASES.error
++          ctx.MESSAGE = "Please use HTTPS protocol"
++          ctx.service = service
++          ctx.route = route
++          ngx.status = 426
++          ngx.header["Connection"] = "Upgrade"
++          ngx.headers["Upgrade"] = "TLS/1.2, HTTP/1.1"
++          return kong_error_handlers(ctx)
++          -- return kong.response.error(426, "Please use HTTPS protocol", {
++          --   ["Connection"] = "Upgrade",
++          --   ["Upgrade"]    = "TLS/1.2, HTTP/1.1",
++          -- })
+         end
+ 
+         if redirect_status_code == 301
+@@ -1283,6 +1306,8 @@ return {
+         or redirect_status_code == 307
+         or redirect_status_code == 308
+         then
++          ctx.service = service
++          ctx.route = route
+           header["Location"] = "https://" .. forwarded_host .. ctx.request_uri
+           return kong.response.exit(redirect_status_code)
+         end
+@@ -1296,15 +1321,29 @@ return {
+         if content_type and sub(content_type, 1, #"application/grpc") == "application/grpc" then
+           if protocol_version ~= 2 then
+             -- mismatch: non-http/2 request matched grpc route
+-            return kong.response.error(426, "Please use HTTP2 protocol", {
+-              ["connection"] = "Upgrade",
+-              ["upgrade"]    = "HTTP/2",
+-            })
++            --return kong.response.error(426, "Please use HTTP2 protocol", {
++            --  ["connection"] = "Upgrade",
++            --  ["upgrade"]    = "HTTP/2",
++            --})
++            ctx.KONG_PHASE = PHASES.error
++            ctx.MESSAGE = "Please use HTTP2 protocol"
++            ctx.service = service
++            ctx.route = route
++            ngx.status = 426
++            ngx.header["Connection"] = "Upgrade"
++            ngx.header["Upgrade"] = "HTTP/2"
++            return kong_error_handlers(ctx)
+           end
+ 
+         else
+           -- mismatch: non-grpc request matched grpc route
+-          return kong.response.error(415, "Non-gRPC request matched gRPC route")
++          ctx.KONG_PHASE = PHASES.error
++          ctx.MESSAGE = "Non-gRPC request matched gRPC route"
++          ctx.service = service
++          ctx.route = route
++          ngx.status = 415
++          return kong_error_handlers(ctx)
++          -- return kong.response.error(415, "Non-gRPC request matched gRPC route")
+         end
+ 
+         if not protocols.grpc and forwarded_proto ~= "https" then
+diff --git a/kong/templates/nginx_kong.lua b/kong/templates/nginx_kong.lua
+index 41b6c3fd1..2bc0f4882 100644
+--- a/kong/templates/nginx_kong.lua
++++ b/kong/templates/nginx_kong.lua
+@@ -23,6 +23,7 @@ lua_shared_dict kong_db_cache               ${{MEM_CACHE_SIZE}};
+ lua_shared_dict kong_db_cache_miss          12m;
+ lua_shared_dict kong_secrets                5m;
+ 
++
+ underscores_in_headers on;
+ > if ssl_ciphers then
+ ssl_ciphers ${{SSL_CIPHERS}};
+@@ -477,6 +478,7 @@ server {
+             Kong.serve_cluster_listener()
+         }
+     }
++
+ }
+ > end -- role == "control_plane"
+ 
+diff --git a/kong/tools/utils.lua b/kong/tools/utils.lua
+index 060aed457..830dfab2b 100644
+--- a/kong/tools/utils.lua
++++ b/kong/tools/utils.lua
+@@ -1397,6 +1397,7 @@ do
+   local CONTENT_TYPE_JSON    = "application/json"
+   local CONTENT_TYPE_GRPC    = "application/grpc"
+   local CONTENT_TYPE_HTML    = "text/html"
++  local CONTENT_TYPE_CSS     = "text/css"
+   local CONTENT_TYPE_XML     = "application/xml"
+   local CONTENT_TYPE_PLAIN   = "text/plain"
+   local CONTENT_TYPE_APP     = "application"
+@@ -1407,6 +1408,7 @@ do
+   local MIME_TYPES = {
+     [CONTENT_TYPE_GRPC]     = "",
+     [CONTENT_TYPE_HTML]     = "text/html; charset=utf-8",
++    [CONTENT_TYPE_CSS]      = "text/css; charset=utf-8",
+     [CONTENT_TYPE_JSON]     = "application/json; charset=utf-8",
+     [CONTENT_TYPE_PLAIN]    = "text/plain; charset=utf-8",
+     [CONTENT_TYPE_XML]      = "application/xml; charset=utf-8",
+@@ -1430,6 +1432,7 @@ do
+   </body>
+ </html>
+ ]],
++    [CONTENT_TYPE_CSS] = "%s\n",
+     [CONTENT_TYPE_JSON]   = [[
+ {
+   "message":"%s"
+@@ -1544,6 +1547,9 @@ do
+     elseif mime_type == CONTENT_TYPE_HTML or mime_type == MIME_TYPES[CONTENT_TYPE_HTML] then
+       return custom_error_templates.html or ERROR_TEMPLATES[CONTENT_TYPE_HTML]
+ 
++    elseif mime_type == CONTENT_TYPE_CSS or mime_type == MIME_TYPES[CONTENT_TYPE_CSS] then
++      return ERROR_TEMPLATES[CONTENT_TYPE_CSS]
++
+     elseif mime_type == CONTENT_TYPE_XML or mime_type == MIME_TYPES[CONTENT_TYPE_XML] then
+       return custom_error_templates.xml or ERROR_TEMPLATES[CONTENT_TYPE_XML]
+ 
