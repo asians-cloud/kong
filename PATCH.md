@@ -1,3 +1,3 @@
 #PATCH 3.4.0
-git format-patch asians 3.4.0 -o /Users/victor/workspace/gaius/gaius-pusher/roles/gaius.kong/files/kong/asians.patch
+git format-patch asians-3.4.0 3.4.0 -o ../gaius-pusher/roles/gaius.kong/files/kong/asians.patch
 
