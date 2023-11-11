@@ -1397,6 +1397,7 @@ do
   local CONTENT_TYPE_JSON    = "application/json"
   local CONTENT_TYPE_GRPC    = "application/grpc"
   local CONTENT_TYPE_HTML    = "text/html"
+  local CONTENT_TYPE_CSS     = "text/css"
   local CONTENT_TYPE_XML     = "application/xml"
   local CONTENT_TYPE_PLAIN   = "text/plain"
   local CONTENT_TYPE_APP     = "application"
@@ -1407,6 +1408,7 @@ do
   local MIME_TYPES = {
     [CONTENT_TYPE_GRPC]     = "",
     [CONTENT_TYPE_HTML]     = "text/html; charset=utf-8",
+    [CONTENT_TYPE_CSS]      = "text/css; charset=utf-8",
     [CONTENT_TYPE_JSON]     = "application/json; charset=utf-8",
     [CONTENT_TYPE_PLAIN]    = "text/plain; charset=utf-8",
     [CONTENT_TYPE_XML]      = "application/xml; charset=utf-8",
@@ -1431,6 +1433,7 @@ do
   </body>
 </html>
 ]],
+    [CONTENT_TYPE_CSS] = "%s\n",
     [CONTENT_TYPE_JSON]   = [[
 {
   "message":"%s",
@@ -1546,6 +1549,9 @@ do
 
     elseif mime_type == CONTENT_TYPE_HTML or mime_type == MIME_TYPES[CONTENT_TYPE_HTML] then
       return custom_error_templates.html or ERROR_TEMPLATES[CONTENT_TYPE_HTML]
+
+    elseif mime_type == CONTENT_TYPE_CSS or mime_type == MIME_TYPES[CONTENT_TYPE_CSS] then
+      return ERROR_TEMPLATES[CONTENT_TYPE_CSS]
 
     elseif mime_type == CONTENT_TYPE_XML or mime_type == MIME_TYPES[CONTENT_TYPE_XML] then
       return custom_error_templates.xml or ERROR_TEMPLATES[CONTENT_TYPE_XML]
