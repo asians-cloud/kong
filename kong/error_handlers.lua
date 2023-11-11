@@ -56,7 +56,6 @@ end
 local get_body
 do
   local DEFAULT_FMT = "The upstream server responded with %d"
-
   get_body = function(ctx)
     local status = kong.response.get_status()
     local accept_header = kong.request.get_header(ACCEPT)
@@ -132,6 +131,7 @@ return function(ctx)
     message = { message = message }
 
   else
+    local rid = request_id.get() or ""
     message = fmt(utils.get_error_template(mime_type), message, rid)
     headers = { [CONTENT_TYPE] = mime_type }
 
