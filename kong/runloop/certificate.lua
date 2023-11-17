@@ -251,8 +251,8 @@ local function validate_sni(sni)
   end
 
   -- check if it's a valid domain name and that it's not an IP address
-  local ip = utils.normalize_ip(sni)
-  return domain_checker(sni) and not ip
+  local is_ip = utils.normalize_ipv4(sni) or utils.normalize_ipv6(sni)
+  return domain_checker(sni) and not is_ip
 end
 
 
