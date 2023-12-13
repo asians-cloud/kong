@@ -83,6 +83,17 @@ end
 
 
 return {
+  ["/broadcasts"] = {
+    POST = function(self, db)
+      local res, err = kong.worker_events.post("clustering", "push_config")
+      if not res then
+        ngx_log(ngx_ERR, _log_prefix, "unable to broadcast event: ", err)
+        return kong.response.exit(400, "Can't send the broadcast")
+      end
+      return kong.response.exit(200, "OK")
+    end
+  },
+
   ["/config"] = {
     GET = function(self, db)
       if kong.db.strategy ~= "off" then
