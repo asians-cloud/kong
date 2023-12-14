@@ -41,6 +41,11 @@ init_by_lua_block {
 
 init_worker_by_lua_block {
     Kong.init_worker()
+    local cs = require "crowdsec"
+    local ok, err = cs.init("/etc/crowdsec/bouncers/crowdsec-openresty-bouncer.conf", "crowdsec-openresty-bouncer/v0.1.11")
+    if ok == nil then
+        ngx.log(ngx.ERR, "[Crowdsec] " .. err)
+    end
 }
 
 exit_worker_by_lua_block {
@@ -100,7 +105,11 @@ server {
     }
 
     access_by_lua_block {
-        Kong.access()
+        local cs = require "crowdsec"
+        cs.Allow(ngx.var.remote_addr)
+        if ngx.header['x-gaius-openresty'] ~= 'HIT' then
+            Kong.access()
+        end
     }
 
     header_filter_by_lua_block {
