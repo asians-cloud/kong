@@ -24,6 +24,11 @@
 - Fixed entity docs link.
   [#92](https://github.com/Kong/kong-manager/pull/92)
 
+## Labeled dp
+- set configuration in dp node:
+  cluster_dp_labels =             filter-cname:123,filter-postfix:lw5.net  # ( all statements are in OR condition. Simple search now )
+
+
 ## 3.4.0
 
 ### Breaking Changes

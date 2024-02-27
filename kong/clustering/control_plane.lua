@@ -173,6 +173,7 @@ _M.check_version_compatibility = compat.check_version_compatibility
 _M.check_configuration_compatibility = compat.check_configuration_compatibility
 
 
+-- "labels":{"filter-cname":"fa58edb2","filter-postfix":"lw5.net"}
 function _M:handle_cp_websocket()
   local dp_id = ngx_var.arg_node_id
   local dp_hostname = ngx_var.arg_node_hostname
@@ -413,7 +414,97 @@ function _M:handle_cp_websocket()
         goto continue
       end
 
-      local _, deflated_payload, err = update_compatible_payload(self.reconfigure_payload, dp_version, log_suffix)
+
+      ngx_log(ngx_DEBUG, "Received lables: ", cjson_encode(data.labels), log_suffix)
+
+      local reconfigure_payload = self.reconfigure_payload
+
+      -- filter config before sending
+      if not isempty(data.labels) then
+        local filters = {}
+        for k, v in pairs(data.labels) do
+          if k:sub(1, #"filter-") == "filter-" then
+            filters[k:sub(8)] = v
+          end
+        end
+
+        ngx_log(ngx_DEBUG, "Check filters: ", cjson_encode(filters), log_suffix)
+
+        if isempty(filters) then
+          goto continue_send
+        end
+
+        reconfigure_payload = {}
+
+        for k, v in pairs(self.reconfigure_payload) do
+          local _v
+          local refs = {}
+          if k == "config_table" then
+            _v = {}
+            for k2, v2 in pairs(v) do
+              if k2 == "routes" or k2 == "services" or k2 == "upstreams" then
+                local _v2 = {}
+                for k3, v3 in pairs(v2) do
+                  local insert_ = false
+                  if type(v3["tags"]) == "table" and not isempty(v3["tags"]) then
+                    for i, tag in ipairs(v3["tags"]) do
+                      for fk, fv in pairs(filters) do
+                        if string.find(tag, fv) or string.find(tag, "system") then -- Just use simple search. If it is not enough, we can use regex. 
+                          insert_ = true
+                        end
+                      end
+                    end
+                  else
+                    insert_ = true
+                  end
+                  if insert_ then
+                    refs[v3["id"]] = k2
+                    table_insert(_v2, v3)
+                  end
+                end
+                _v[k2] = _v2
+              else
+                _v[k2] = v2
+              end
+            end
+            
+            local plugins = {}
+            for k2, v2 in pairs(_v["plugins"]) do
+              local insert_ = false
+              if refs[v2["service"]] == "services" then
+                table_insert(plugins, v2)
+              end
+            end
+            _v["plugins"] = plugins
+
+            local targets = {}
+            for k2, v2 in pairs(_v["targets"]) do
+              local insert_ = false
+              if refs[v2["upstream"]] == "upstreams" then
+                table_insert(targets, v2)
+              end
+            end
+            _v["targets"] = targets
+          else
+            _v = v
+          end
+          reconfigure_payload[k] = _v
+        end
+        
+        local config_hash, hashes = calculate_config_hash(reconfigure_payload["config_table"])
+        reconfigure_payload['config_hash'] = config_hash
+        reconfigure_payload['hashes'] = hashes
+      end
+      
+
+      ::continue_send::
+
+      local deflated_payload, err, _
+      if not isempty(data.labels) then
+        deflated_payload, err = deflate_gzip(cjson_encode(reconfigure_payload))
+      else
+        _, deflated_payload, err = update_compatible_payload(reconfigure_payload, dp_version, log_suffix)
+      end 
 
       if not deflated_payload then -- no modification or err, use the cached payload
         deflated_payload = self.deflated_reconfigure_payload
@@ -423,7 +514,7 @@ function _M:handle_cp_websocket()
         ngx_log(ngx_WARN, "unable to update compatible payload: ", err, ", the unmodified config ",
                           "is returned", log_suffix)
       end
-
+      
       -- config update
       local _, err = wb:send_binary(deflated_payload)
       if err then
@@ -434,7 +525,7 @@ function _M:handle_cp_websocket()
         ngx_log(ngx_NOTICE, _log_prefix, "unable to send updated configuration to data plane: ", err, log_suffix)
 
       else
-        ngx_log(ngx_DEBUG, _log_prefix, "sent config update to data plane", log_suffix)
+        ngx_log(ngx_DEBUG, _log_prefix, "sent config update to data plane with size: ", #deflated_payload, log_suffix)
       end
 
       ::continue::
