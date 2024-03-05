@@ -414,7 +414,6 @@ function _M:handle_cp_websocket()
         goto continue
       end
 
-
       ngx_log(ngx_DEBUG, "Received lables: ", cjson_encode(data.labels), log_suffix)
 
       local reconfigure_payload = self.reconfigure_payload
@@ -441,15 +440,15 @@ function _M:handle_cp_websocket()
           local refs = {}
           if k == "config_table" then
             _v = {}
-            for k2, v2 in pairs(v) do
-              if k2 == "routes" or k2 == "services" or k2 == "upstreams" then
-                local _v2 = {}
-                for k3, v3 in pairs(v2) do
+            for name, v2 in pairs(v) do
+              if name == "routes" or name == "services" or name == "upstreams" then
+                local _rows = {}
+                for k3, row in pairs(v2) do
                   local insert_ = false
-                  if type(v3["tags"]) == "table" and not isempty(v3["tags"]) then
-                    for i, tag in ipairs(v3["tags"]) do
+                  if type(row["tags"]) == "table" and not isempty(row["tags"]) then
+                    for i, tag in ipairs(row["tags"]) do
                       for fk, fv in pairs(filters) do
-                        if string.find(tag, fv) or string.find(tag, "system") then -- Just use simple search. If it is not enough, we can use regex. 
+                        if string.find(tag, fv) or string.find(tag, "system") then -- Just use simple search. If it is not enough, we can use regex.  System settings is required for all data planes.
                           insert_ = true
                         end
                       end
@@ -458,30 +457,32 @@ function _M:handle_cp_websocket()
                     insert_ = true
                   end
                   if insert_ then
-                    refs[v3["id"]] = k2
-                    table_insert(_v2, v3)
+                    refs[row["id"]] = name
+                    table_insert(_rows, row)
                   end
                 end
-                _v[k2] = _v2
+                _v[name] = _rows
+              else if name == "plugins" or name == "targets" then
+                _v[name] = {} -- handle it later with refs
               else
-                _v[k2] = v2
+                _v[name] = v2
               end
             end
             
             local plugins = {}
-            for k2, v2 in pairs(_v["plugins"]) do
+            for name, row in pairs(_v["plugins"]) do
               local insert_ = false
-              if refs[v2["service"]] == "services" then
-                table_insert(plugins, v2)
+              if refs[row["service"]] == "services" or refs[row["route"]] == "routes" then
+                table_insert(plugins, row)
               end
             end
             _v["plugins"] = plugins
 
             local targets = {}
-            for k2, v2 in pairs(_v["targets"]) do
+            for name, row in pairs(_v["targets"]) do
               local insert_ = false
-              if refs[v2["upstream"]] == "upstreams" then
-                table_insert(targets, v2)
+              if refs[row["upstream"]] == "upstreams" then
+                table_insert(targets, row)
               end
             end
             _v["targets"] = targets
