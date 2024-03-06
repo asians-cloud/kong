@@ -462,7 +462,7 @@ function _M:handle_cp_websocket()
                   end
                 end
                 _v[name] = _rows
-              else if name == "plugins" or name == "targets" then
+              elseif name == "plugins" or name == "targets" then
                 _v[name] = {} -- handle it later with refs
               else
                 _v[name] = v2
@@ -470,7 +470,7 @@ function _M:handle_cp_websocket()
             end
             
             local plugins = {}
-            for name, row in pairs(_v["plugins"]) do
+            for name, row in pairs(v["plugins"]) do
               local insert_ = false
               if refs[row["service"]] == "services" or refs[row["route"]] == "routes" then
                 table_insert(plugins, row)
@@ -479,7 +479,7 @@ function _M:handle_cp_websocket()
             _v["plugins"] = plugins
 
             local targets = {}
-            for name, row in pairs(_v["targets"]) do
+            for name, row in pairs(v["targets"]) do
               local insert_ = false
               if refs[row["upstream"]] == "upstreams" then
                 table_insert(targets, row)
