@@ -453,7 +453,7 @@ function _M:handle_cp_websocket()
                         end
                       end
                     end
-                  else
+                  else -- always insert default services / routes / upstreams without tags
                     insert_ = true
                   end
                   if insert_ then
@@ -472,7 +472,7 @@ function _M:handle_cp_websocket()
             local plugins = {}
             for name, row in pairs(v["plugins"]) do
               local insert_ = false
-              if refs[row["service"]] == "services" or refs[row["route"]] == "routes" then
+              if row["scope"] == "global" or row["scope"] == "all" or refs[row["service"]] == "services" or refs[row["route"]] == "routes" then
                 table_insert(plugins, row)
               end
             end
