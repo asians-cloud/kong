@@ -48,6 +48,7 @@ local connect_dp = clustering_utils.connect_dp
 local kong_dict = ngx.shared.kong
 local ngx_DEBUG = ngx.DEBUG
 local ngx_NOTICE = ngx.NOTICE
+local ngx_INFO = ngx.INFO
 local ngx_WARN = ngx.WARN
 local ngx_ERR = ngx.ERR
 local ngx_OK = ngx.OK
@@ -97,7 +98,7 @@ end
 function _M:export_deflated_reconfigure_payload(dp_cname)
   if dp_cname ~= nil then
     ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
-  else:
+  else
    ngx_log(ngx_INFO, "Doesn't find cname")
    return
   end
