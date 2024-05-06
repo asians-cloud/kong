@@ -35,6 +35,10 @@ local function has_value (tab, val)
     return false
   end
   for _, value in ipairs(tab) do
+    -- For internal system should be the value of cname is _ and owner is _
+    if string.find(value, "_") and not string.find(value, "not_js_challenge") then
+      return true
+    end
     if string.find(value, val) then
       return true
     end
@@ -181,7 +185,7 @@ local function export_from_db_impl(emitter, skip_ws, skip_disabled_entities, exp
         -- Skip tags not match with cname suffix of the data plane node.
         skip_cname_routes[row.id] = true
 
-      elseif name == "services" and row.tags ~= nil and not has_value(row.tags, "_") and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
+      elseif name == "services" and row.tags ~= nil and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
         -- Skip tags not match with cname suffix of the data plane node.
         skip_cname_services[row.id] = true
 
@@ -305,7 +309,7 @@ local function export_config(skip_ws, skip_disabled_entities, dp_cname)
     skip_disabled_entities = true
   end
 
-  return export_from_db_impl(table_emitter.new(), skip_ws, skip_disabled_entities, dp_cname)
+  return export_from_db_impl(table_emitter.new(), skip_ws, skip_disabled_entities, true, dp_cname)
 end
 
 
