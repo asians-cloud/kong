@@ -472,7 +472,7 @@ function _M:handle_cp_websocket()
             local plugins = {}
             for name, row in pairs(v["plugins"]) do
               local insert_ = false
-              if row["scope"] == "global" or row["scope"] == "all" or refs[row["service"]] == "services" or refs[row["route"]] == "routes" then
+              if ( row["service"] == ngx.null and row["route"] == ngx.null ) or refs[row["service"]] == "services" or refs[row["route"]] == "routes" then
                 table_insert(plugins, row)
               end
             end
