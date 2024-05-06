@@ -158,17 +158,24 @@ end
 function _M:push_config()
   local start = ngx_now()
 
-  local payload, err = self:export_deflated_reconfigure_payload()
-  if not payload then
-    ngx_log(ngx_ERR, _log_prefix, "unable to export config from database: ", err)
-    return
-  end
-
   local n = 0
-  for _, queue in pairs(self.clients) do
+  for wb, queue in pairs(self.clients) do
+    if wb["dp_cname"] == nil then
+      goto continue_pushconfig
+    end
+
+    local payload, err = self:export_deflated_reconfigure_payload(wb["dp_cname"])
+    ngx_log(ngx_INFO, _log_prefix, "the dp_cname is set as " .. wb["dp_cname"])
+    if not payload then
+      ngx_log(ngx_ERR, _log_prefix, "unable to export config from database: ", err)
+      return
+    end
+
     table_insert(queue, RECONFIGURE_TYPE)
     queue.post()
     n = n + 1
+    
+    ::continue_pushconfig::
   end
 
   ngx_update_time()

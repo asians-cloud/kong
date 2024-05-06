@@ -162,6 +162,9 @@ function _M.connect_dp(dp_id, dp_hostname, dp_ip, dp_version, dp_cname)
     return nil, nil, ngx_CLOSE
   end
 
+  -- We need the dp_cname here so that we can access it inside the push_config
+  wb["dp_cname"] = dp_cname
+
   return wb, log_suffix
 end
 
