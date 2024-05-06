@@ -71,7 +71,8 @@ function _M.connect_cp(dp, endpoint, protocols)
   local uri = "wss://" .. address .. "?node_id=" ..
               kong.node.get_id() ..
               "&node_hostname=" .. kong.node.get_hostname() ..
-              "&node_version=" .. KONG_VERSION
+              "&node_version=" .. KONG_VERSION ..
+              "&node_cname=" .. (os.getenv('CNAME_SUFFIX') or 'yk1.net')
 
   local opts = {
     ssl_verify = true,
@@ -110,7 +111,7 @@ function _M.connect_cp(dp, endpoint, protocols)
 end
 
 
-function _M.connect_dp(dp_id, dp_hostname, dp_ip, dp_version)
+function _M.connect_dp(dp_id, dp_hostname, dp_ip, dp_version, dp_cname)
   local log_suffix = {}
 
   if type(dp_id) == "string" then
@@ -129,6 +130,10 @@ function _M.connect_dp(dp_id, dp_hostname, dp_ip, dp_version)
     table_insert(log_suffix, "version: " .. dp_version)
   end
 
+  if type(dp_cname) == "string" then
+    table_insert(log_suffix, "cname: " .. dp_cname)
+  end
+
   if #log_suffix > 0 then
     log_suffix = " [" .. table_concat(log_suffix, ", ") .. "]"
   else
@@ -142,6 +147,11 @@ function _M.connect_dp(dp_id, dp_hostname, dp_ip, dp_version)
 
   if not dp_version then
     ngx_log(ngx_WARN, _log_prefix, "data plane didn't pass the version", log_suffix)
+    return nil, nil, 400
+  end
+
+  if not dp_cname then
+    ngx_log(ngx_WARN, _log_prefix, "data plane did't pass the cname", log_suffix)
     return nil, nil, 400
   end
 

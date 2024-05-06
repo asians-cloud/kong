@@ -64,10 +64,10 @@ local _log_prefix = "[clustering] "
 local no_connected_clients_logged
 
 
-local function handle_export_deflated_reconfigure_payload(self)
+local function handle_export_deflated_reconfigure_payload(self, dp_cname)
   ngx_log(ngx_DEBUG, _log_prefix, "exporting config")
 
-  local ok, p_err, err = pcall(self.export_deflated_reconfigure_payload, self)
+  local ok, p_err, err = pcall(self.export_deflated_reconfigure_payload, self, dp_cname)
   return ok, p_err or err
 end
 
@@ -94,8 +94,15 @@ function _M.new(clustering)
 end
 
 
-function _M:export_deflated_reconfigure_payload()
-  local config_table, err = declarative.export_config()
+function _M:export_deflated_reconfigure_payload(dp_cname)
+  if dp_cname ~= nil then
+    ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
+  else:
+   ngx_log(ngx_INFO, "Doesn't find cname")
+   return
+  end
+  -- Skip disable plugins
+  local config_table, err = declarative.export_config(false, false, dp_cname)
   if not config_table then
     return nil, err
   end
@@ -179,8 +186,9 @@ function _M:handle_cp_websocket()
   local dp_hostname = ngx_var.arg_node_hostname
   local dp_ip = ngx_var.remote_addr
   local dp_version = ngx_var.arg_node_version
+  local dp_cname = ngx_var.args_node_cname
 
-  local wb, log_suffix, ec = connect_dp(dp_id, dp_hostname, dp_ip, dp_version)
+  local wb, log_suffix, ec = connect_dp(dp_id, dp_hostname, dp_ip, dp_version, dp_cname)
   if not wb then
     return ngx_exit(ec)
   end
@@ -273,7 +281,7 @@ function _M:handle_cp_websocket()
   -- push event in `push_config_loop`, which means the cached config
   -- might be stale, so we always export the latest config again in this case
   if isempty(self.clients) or not self.deflated_reconfigure_payload then
-    _, err = handle_export_deflated_reconfigure_payload(self)
+    _, err = handle_export_deflated_reconfigure_payload(self, dp_cname)
   end
 
   self.clients[wb] = queue
