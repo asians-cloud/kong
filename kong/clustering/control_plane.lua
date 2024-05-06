@@ -186,7 +186,7 @@ function _M:handle_cp_websocket()
   local dp_hostname = ngx_var.arg_node_hostname
   local dp_ip = ngx_var.remote_addr
   local dp_version = ngx_var.arg_node_version
-  local dp_cname = ngx_var.args_node_cname
+  local dp_cname = ngx_var.arg_node_cname
 
   local wb, log_suffix, ec = connect_dp(dp_id, dp_hostname, dp_ip, dp_version, dp_cname)
   if not wb then
