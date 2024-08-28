@@ -179,6 +179,11 @@ end
 -- @param recreate (boolean, optional) create new balancer even if one exists
 -- @return The new balancer object, or nil+error
 function balancers_M.create_balancer(upstream, recreate)
+  -- Return error if upstream is nil
+  if upstream == nil or type(upstream) ~= "table" then
+    return nil, "upstream is nil please check your upstream"
+  end
+
   local existing_balancer = balancers_by_id[upstream.id]
   if existing_balancer then
     if recreate then
