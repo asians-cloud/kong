@@ -418,6 +418,9 @@ end
 -- the health checker, this parameter is useful to avoid throwing away current
 -- health status.
 function healthcheckers_M.stop_healthcheckers(delay)
+  if upstreams.get_all_upstreams() == nil then
+    return
+  end
   for _, id in pairs(upstreams.get_all_upstreams()) do
     local balancer = balancers.get_balancer_by_id(id)
     if balancer then
