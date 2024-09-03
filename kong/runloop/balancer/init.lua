@@ -258,7 +258,9 @@ local function init()
 
     _, err = balancers.create_balancer(upstream)
     if err then
-      log(CRIT, "failed creating balancer for upstream ", upstream.name, ": ", err)
+      if upstream then
+        log(CRIT, "failed creating balancer for upstream ", upstream.name, ": ", err)
+      end
     end
 
     local target
