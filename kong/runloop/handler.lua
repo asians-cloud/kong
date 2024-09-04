@@ -1134,14 +1134,6 @@ return {
       ctx.scheme = var.scheme
       ctx.request_uri = var.request_uri
 
-      -- Detect host is IP
-      if string.find(var.host, "fr5.net") or string.find(var.host, "yk1.net") or string.find(var.host, "lw6.net") or string.find(var.host, "w15.net") or string.find(var.host, "localhost") or utils.normalize_ip(var.host) then
-        if var.request_uri == "/ok" then
-          kong.ctx.shared.skip_log = true
-          kong.response.exit(200, "OK")
-        end
-      end
-
       -- trace router
       local span = instrumentation.router()
       -- create the balancer span "in advance" so its ID is available
@@ -1150,6 +1142,16 @@ return {
 
       -- routing request
       local router = get_updated_router()
+
+      -- Detect host is IP
+      local cname_suffix = os.getenv('CNAME_SUFFIX') or ''
+      if string.find(var.host, cname_suffix) or string.find(var.host, "localhost") or utils.normalize_ip(var.host) then
+        if var.request_uri == "/ok" then
+          kong.ctx.shared.skip_log = true
+          kong.response.exit(200, "OK")
+        end
+      end
+
       local match_t = router:exec(ctx)
       if not match_t then
         -- tracing

@@ -72,7 +72,7 @@ function _M.connect_cp(dp, endpoint, protocols)
               kong.node.get_id() ..
               "&node_hostname=" .. kong.node.get_hostname() ..
               "&node_version=" .. KONG_VERSION ..
-              "&node_cname=" .. (os.getenv('CNAME_SUFFIX') or 'yk1.net')
+              "&node_cname=" .. (os.getenv('CNAME_SUFFIX') or '')
 
   local opts = {
     ssl_verify = true,
