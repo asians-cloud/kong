@@ -335,6 +335,11 @@ local function execute()
     return ngx_exit(ngx_ERROR)
   end
 
+  -- Skip find_certificate if the SNI have '~' on the first char
+  if sn ~= nil and string.sub(sn, 1, 1) == '~' then
+    return
+  end
+
   local cert_and_key, err = find_certificate(sn)
   if err then
     log(ERR, err)
