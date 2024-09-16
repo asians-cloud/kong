@@ -8,7 +8,7 @@ local balancers = require "kong.runloop.balancer.balancers"
 local upstream_ssl = require "kong.runloop.upstream_ssl"
 local upstreams = require "kong.runloop.balancer.upstreams"
 local targets = require "kong.runloop.balancer.targets"
-
+local pl_utils = require "pl.utils"
 
 -- due to startup/require order, cannot use the ones from 'kong' here
 local dns_client = require "kong.resty.dns.client"
@@ -33,8 +33,9 @@ local is_http_module   = ngx.config.subsystem == "http"
 local CRIT = ngx.CRIT
 local ERR = ngx.ERR
 local WARN = ngx.WARN
+local ALERT = ngx.ALERT
 local EMPTY_T = pl_tablex.readonly {}
-
+local ERROR_RATE = 0.01 -- 1% when error rate is greater than this, reload nginx
 
 local set_authority
 
@@ -225,10 +226,26 @@ local function set_cookie(cookie)
   header["Set-Cookie"] = cookie_header
 end
 
+local function reload_nginx_worker()
+  local worker_pid = ngx.worker.pid()
+  local signal = "TERM"
+  
+  local cmd_tmpl = [[kill -%s %d >/dev/null 2>&1]]
+
+  log(CRIT, string.format("sending %s signal to nginx running at %d", signal, worker_pid))
+  
+  local cmd = string.format(cmd_tmpl, signal, worker_pid)
+  
+  local _, code = pl_utils.execute(cmd)
+  return code
+end
+
 
 --==============================================================================
 -- Initialize balancers
 --==============================================================================
+
+
 
 
 
@@ -248,7 +265,8 @@ local function init()
     log(CRIT, "failed loading list of upstreams: ", err)
     return
   end
-
+  
+  local oks, errs = 1, 0
   for _, id in pairs(upstreams_dict) do
     local upstream
     upstream, err = upstreams.get_upstream_by_id(id)
@@ -261,16 +279,28 @@ local function init()
       if upstream then
         log(CRIT, "failed creating balancer for upstream ", upstream.name, ": ", err)
       end
+      errs = errs + 1
+    else
+      oks = oks + 1
     end
 
     local target
     target, err = targets.fetch_targets(upstream)
     if target == nil or err then
       log(WARN, "failed loading targets for upstream ", id, ": ", err)
+      errs = errs + 1
+    else
+      oks = oks + 1
     end
   end
-
-  upstreams.update_balancer_state()
+  
+  if errs / oks > ERROR_RATE then
+    log(CRIT, "reinitializing to initialize balancers, recall init(). ", errs, " error(s)", oks, " balancer(s) initialized")
+    reload_nginx_worker()
+  else
+    log(ALERT, "initialized ", oks, " balancer(s), ", errs, " error(s)")
+    upstreams.update_balancer_state()
+  end
 end
 
 

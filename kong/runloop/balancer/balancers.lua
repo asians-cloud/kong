@@ -20,6 +20,7 @@ local table_remove = table.remove
 local CRIT = ngx.CRIT
 local ERR = ngx.ERR
 local DEBUG = ngx.DEBUG
+local ALERT = ngx.ALERT
 
 --local DEFAULT_WEIGHT = 10   -- default weight for a host, if not provided
 --local DEFAULT_PORT = 80     -- Default port to use (A and AAAA only) when not provided
