@@ -67,6 +67,12 @@ local no_connected_clients_logged
 
 local function handle_export_deflated_reconfigure_payload(self, dp_cname)
   ngx_log(ngx_DEBUG, _log_prefix, "exporting config")
+  if dp_cname ~= nil then
+    ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
+  else
+   ngx_log(ngx_INFO, "Doesn't find cname")
+   return
+  end
 
   local ok, p_err, err = pcall(self.export_deflated_reconfigure_payload, self, dp_cname)
   return ok, p_err or err
