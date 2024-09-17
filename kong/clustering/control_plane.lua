@@ -287,10 +287,9 @@ function _M:handle_cp_websocket()
   -- if clients table is empty, we might have skipped some config
   -- push event in `push_config_loop`, which means the cached config
   -- might be stale, so we always export the latest config again in this case
-  -- Disabling since the first hit will be give wrong content not match with dp_cname
-  --if isempty(self.clients) or not self.deflated_reconfigure_payload then
-  --  _, err = handle_export_deflated_reconfigure_payload(self, dp_cname)
-  --end
+  if isempty(self.clients) or not self.deflated_reconfigure_payload then
+    _, err = handle_export_deflated_reconfigure_payload(self, dp_cname)
+  end
 
   self.clients[wb] = queue
 
