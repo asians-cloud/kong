@@ -182,23 +182,29 @@ function _M:communicate(premature)
   local ping_immediately
   local config_exit
   local next_data
+  local kong_sync_dict = ngx.shared.kong_sync
 
   local config_thread = ngx.thread.spawn(function()
     while not exiting() and not config_exit do
       local ok, err = config_semaphore:wait(1)
+
+      local is_sync = kong_sync_dict:get("is_sync")
 
       if not ok then
         if err ~= "timeout" then
           ngx_log(ngx_ERR, _log_prefix, "semaphore wait error: ", err)
         end
 
+        kong_sync_dict:set("is_sync", false)
         goto continue
       end
 
       local data = next_data
       if not data then
+        kong_sync_dict:set("is_sync", false)
         goto continue
       end
+
 
       local msg = assert(inflate_gzip(data))
       yield()
@@ -206,7 +212,12 @@ function _M:communicate(premature)
       yield()
 
       if msg.type ~= "reconfigure" then
+        kong_sync_dict:set("is_sync", false)
         goto continue
+      end
+
+      if not is_sync then
+        kong_sync_dict:set("is_sync", true)
       end
 
       ngx_log(ngx_DEBUG, _log_prefix, "received reconfigure frame from control plane",

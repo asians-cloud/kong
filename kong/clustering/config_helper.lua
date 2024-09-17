@@ -204,6 +204,7 @@ end
 
 function _M.update(declarative_config, config_table, config_hash, hashes)
   assert(type(config_table) == "table")
+  local kong_sync_dict = ngx.shared.kong_sync
 
   if not config_hash then
     config_hash, hashes = calculate_config_hash(config_table)
@@ -217,18 +218,21 @@ function _M.update(declarative_config, config_table, config_hash, hashes)
   if current_hash == config_hash then
     ngx_log(ngx_DEBUG, _log_prefix, "same config received from control plane, ",
       "no need to reload")
+    kong_sync_dict:set("is_sync", false)
     return true
   end
 
   local entities, err, _, meta, new_hash =
   declarative_config:parse_table(config_table, config_hash)
   if not entities then
+    kong_sync_dict:set("is_sync", false)
     return nil, "bad config received from control plane " .. err
   end
 
   if current_hash == new_hash then
     ngx_log(ngx_DEBUG, _log_prefix, "same config received from control plane, ",
       "no need to reload")
+    kong_sync_dict:set("is_sync", false)
     return true
   end
 
@@ -238,8 +242,11 @@ function _M.update(declarative_config, config_table, config_hash, hashes)
   local res
   res, err = declarative.load_into_cache_with_events(entities, meta, new_hash, hashes)
   if not res then
+    kong_sync_dict:set("is_sync", false)
     return nil, err
   end
+
+  kong_sync_dict:set("is_sync", false)
 
   return true
 end
