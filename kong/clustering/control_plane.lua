@@ -490,10 +490,11 @@ local function push_config_loop(premature, self, push_config_semaphore, delay)
     return
   end
 
-  local ok, err = handle_export_deflated_reconfigure_payload(self)
-  if not ok then
-    ngx_log(ngx_ERR, _log_prefix, "unable to export initial config from database: ", err)
-  end
+  -- Can't pass dp_cname here
+  --local ok, err = handle_export_deflated_reconfigure_payload(self)
+  --if not ok then
+  --  ngx_log(ngx_ERR, _log_prefix, "unable to export initial config from database: ", err)
+  --end
 
   while not exiting() do
     local ok, err = push_config_semaphore:wait(1)
