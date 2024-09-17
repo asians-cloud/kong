@@ -889,6 +889,7 @@ function Kong.exit_worker()
       if not is_sync then
         break
       end
+    end
   end
 end
 
