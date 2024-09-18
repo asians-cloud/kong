@@ -913,15 +913,7 @@ function Kong.exit_worker()
   end
 
   if is_dbless(kong.configuration) then
-    local kong_sync_dict = ngx.shared.kong_sync
-    local is_sync = kong_sync_dict:get("is_sync")
-    while is_sync do
-      os.execute("sleep 5")
-      is_sync = kong_sync_dict:get("is_sync")
-      if not is_sync then
-        break
-      end
-    end
+    check_sync_process()
   end
 end
 
