@@ -67,7 +67,7 @@ local no_connected_clients_logged
 
 local function handle_export_deflated_reconfigure_payload(self, dp_cname)
   ngx_log(ngx_DEBUG, _log_prefix, "exporting config")
-  if dp_cname ~= nil then
+  if dp_cname ~= nil and dp_cname ~= "" then
     ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
   else
    ngx_log(ngx_INFO, "Doesn't find cname")
@@ -102,7 +102,7 @@ end
 
 
 function _M:export_deflated_reconfigure_payload(dp_cname)
-  if dp_cname ~= nil then
+  if dp_cname ~= nil and dp_cname ~= "" then
     ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
   else
    ngx_log(ngx_INFO, "Doesn't find cname")
@@ -166,7 +166,7 @@ function _M:push_config()
 
   local n = 0
   for wb, queue in pairs(self.clients) do
-    if wb["dp_cname"] == nil then
+    if wb["dp_cname"] == nil or wb["dp_cname"] == "" then
       goto continue_pushconfig
     end
 
