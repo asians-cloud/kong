@@ -94,6 +94,7 @@ local get_ctx_table = require("resty.core.ctx").get_ctx_table
 local admin_gui = require "kong.admin_gui"
 local wasm = require "kong.runloop.wasm"
 local reports = require "kong.reports"
+local posix = require("posix")
 
 
 local kong             = kong
@@ -553,6 +554,34 @@ local function list_migrations(migtable)
   return table.concat(list, " ")
 end
 
+local function check_sync_process()
+  local kong_sync_dict = ngx.shared.kong_sync
+  local is_sync = kong_sync_dict:get("is_sync")
+  while is_sync do
+    os.execute("sleep 5")
+    is_sync = kong_sync_dict:get("is_sync")
+    if not is_sync then
+      break
+    end
+  end
+end
+
+local function signaltrap()
+  local function signal_handler(signum)
+    if signum == posix.SIGQUIT then
+      check_sync_process()
+    elseif signum == posix.SIGHUP then
+      check_sync_process()
+    elseif signum == posix.SIGKILL then
+      check_sync_process()
+    end
+  end
+
+  posix.signal(posix.SIGQUIT, signal_handler)
+  posix.signal(posix.SIGHUP, signal_handler)
+  posix.signal(posix.SIGKILL, signal_handler)
+end
+
 
 -- Kong public context handlers.
 -- @section kong_handlers
@@ -633,6 +662,9 @@ function Kong.init()
   end
 
   if is_dbless(config) then
+    -- Call signal trap
+    signaltrap()
+
     local dc, err = declarative.new_config(config)
     if not dc then
       error(err)
