@@ -566,22 +566,6 @@ local function check_sync_process()
   end
 end
 
-local function signaltrap()
-  local function signal_handler(signum)
-    if signum == posix.SIGQUIT then
-      check_sync_process()
-    elseif signum == posix.SIGHUP then
-      check_sync_process()
-    elseif signum == posix.SIGKILL then
-      check_sync_process()
-    end
-  end
-
-  posix.signal(posix.SIGQUIT, signal_handler)
-  posix.signal(posix.SIGHUP, signal_handler)
-  posix.signal(posix.SIGKILL, signal_handler)
-end
-
 
 -- Kong public context handlers.
 -- @section kong_handlers
@@ -662,9 +646,6 @@ function Kong.init()
   end
 
   if is_dbless(config) then
-    -- Call signal trap
-    signaltrap()
-
     local dc, err = declarative.new_config(config)
     if not dc then
       error(err)
@@ -913,6 +894,10 @@ function Kong.exit_worker()
   end
 
   if is_dbless(kong.configuration) then
+    check_sync_process()
+  end
+
+  if ngx.worker.exiting() then
     check_sync_process()
   end
 end
