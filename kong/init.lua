@@ -94,7 +94,6 @@ local get_ctx_table = require("resty.core.ctx").get_ctx_table
 local admin_gui = require "kong.admin_gui"
 local wasm = require "kong.runloop.wasm"
 local reports = require "kong.reports"
-local posix = require("posix")
 
 
 local kong             = kong
