@@ -181,6 +181,10 @@ function _M:push_config()
     queue.post()
     n = n + 1
 
+    -- Add sleep 5 seconds to make sure
+    -- not have race condition on sending the payload
+    ngx.sleep(5)
+
     ::continue_pushconfig::
   end
 
