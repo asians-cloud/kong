@@ -128,6 +128,10 @@ end
 -- @param upstream The upstream entity object
 -- @return The targets array, with target entity tables.
 function targets_M.fetch_targets(upstream)
+  if not upstream then
+    return nil, "upstream is nil"
+  end
+
   local targets_cache_key = "balancer:targets:" .. upstream.id
 
   if targets_by_upstream_id[targets_cache_key] == nil then
