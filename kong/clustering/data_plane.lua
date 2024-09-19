@@ -224,6 +224,11 @@ function _M:communicate(premature)
                          msg.timestamp and " with timestamp: " .. msg.timestamp or "",
                          log_suffix)
 
+      if msg.cname ~= os.getenv('CNAME_SUFFIX') then
+        kong_sync_dict:set("is_sync", false)
+        goto continue
+      end
+
       local config_table = assert(msg.config_table)
 
       local pok, res, err = pcall(config_helper.update, self.declarative_config,

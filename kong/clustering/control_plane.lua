@@ -135,6 +135,7 @@ function _M:export_deflated_reconfigure_payload(dp_cname)
     config_table = config_table,
     config_hash = config_hash,
     hashes = hashes,
+    cname = dp_cname,
   }
 
   self.reconfigure_payload = payload
@@ -180,10 +181,6 @@ function _M:push_config()
     table_insert(queue, RECONFIGURE_TYPE)
     queue.post()
     n = n + 1
-
-    -- Add sleep 5 seconds to make sure
-    -- not have race condition on sending the payload
-    ngx.sleep(5)
 
     ::continue_pushconfig::
   end
