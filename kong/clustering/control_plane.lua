@@ -47,6 +47,7 @@ local connect_dp = clustering_utils.connect_dp
 local kong_dict = ngx.shared.kong
 local ngx_DEBUG = ngx.DEBUG
 local ngx_NOTICE = ngx.NOTICE
+local ngx_INFO = ngx.INFO
 local ngx_WARN = ngx.WARN
 local ngx_ERR = ngx.ERR
 local ngx_OK = ngx.OK
@@ -63,10 +64,16 @@ local _log_prefix = "[clustering] "
 local no_connected_clients_logged
 
 
-local function handle_export_deflated_reconfigure_payload(self)
+local function handle_export_deflated_reconfigure_payload(self, dp_cname)
   ngx_log(ngx_DEBUG, _log_prefix, "exporting config")
+  if dp_cname ~= nil and dp_cname ~= "" then
+    ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
+  else
+   ngx_log(ngx_INFO, "Doesn't find cname")
+   return
+  end
 
-  local ok, p_err, err = pcall(self.export_deflated_reconfigure_payload, self)
+  local ok, p_err, err = pcall(self.export_deflated_reconfigure_payload, self, dp_cname)
   return ok, p_err or err
 end
 
@@ -104,8 +111,15 @@ function _M.new(clustering)
 end
 
 
-function _M:export_deflated_reconfigure_payload()
-  local config_table, err = declarative.export_config()
+function _M:export_deflated_reconfigure_payload(dp_cname)
+  if dp_cname ~= nil and dp_cname ~= "" then
+    ngx_log(ngx_INFO, "CNAME: " .. dp_cname)
+  else
+   ngx_log(ngx_INFO, "Doesn't find cname")
+   return
+  end
+  -- Skip disable plugins
+  local config_table, err = declarative.export_config(false, false, dp_cname)
   if not config_table then
     return nil, err
   end
@@ -131,6 +145,7 @@ function _M:export_deflated_reconfigure_payload()
     config_table = config_table,
     config_hash = config_hash,
     hashes = hashes,
+    cname = dp_cname,
   }
 
   self.reconfigure_payload = payload
@@ -160,17 +175,24 @@ end
 function _M:push_config()
   local start = ngx_now()
 
-  local payload, err = self:export_deflated_reconfigure_payload()
-  if not payload then
-    ngx_log(ngx_ERR, _log_prefix, "unable to export config from database: ", err)
-    return
-  end
-
   local n = 0
-  for _, queue in pairs(self.clients) do
+  for wb, queue in pairs(self.clients) do
+    if wb["dp_cname"] == nil or wb["dp_cname"] == "" then
+      goto continue_pushconfig
+    end
+
+    local payload, err = self:export_deflated_reconfigure_payload(wb["dp_cname"])
+    ngx_log(ngx_INFO, _log_prefix, "the dp_cname is set as " .. wb["dp_cname"])
+    if not payload then
+      ngx_log(ngx_ERR, _log_prefix, "unable to export config from database: ", err)
+      return
+    end
+
     table_insert(queue, RECONFIGURE_TYPE)
     queue.post()
     n = n + 1
+
+    ::continue_pushconfig::
   end
 
   ngx_update_time()
@@ -188,8 +210,9 @@ function _M:handle_cp_websocket(cert)
   local dp_hostname = ngx_var.arg_node_hostname
   local dp_ip = ngx_var.remote_addr
   local dp_version = ngx_var.arg_node_version
+  local dp_cname = ngx_var.arg_node_cname
 
-  local wb, log_suffix, ec = connect_dp(dp_id, dp_hostname, dp_ip, dp_version)
+  local wb, log_suffix, ec = connect_dp(dp_id, dp_hostname, dp_ip, dp_version, dp_cname)
   if not wb then
     return ngx_exit(ec)
   end
@@ -295,7 +318,7 @@ function _M:handle_cp_websocket(cert)
   -- push event in `push_config_loop`, which means the cached config
   -- might be stale, so we always export the latest config again in this case
   if isempty(self.clients) or not self.deflated_reconfigure_payload then
-    _, err = handle_export_deflated_reconfigure_payload(self)
+    _, err = handle_export_deflated_reconfigure_payload(self, dp_cname)
   end
 
   self.clients[wb] = queue
@@ -451,6 +474,7 @@ function _M:handle_cp_websocket(cert)
 
       local _, deflated_payload, err = update_compatible_payload(self.reconfigure_payload, dp_version, log_suffix)
 
+
       if not deflated_payload then -- no modification or err, use the cached payload
         deflated_payload = self.deflated_reconfigure_payload
       end
@@ -470,7 +494,7 @@ function _M:handle_cp_websocket(cert)
         ngx_log(ngx_NOTICE, _log_prefix, "unable to send updated configuration to data plane: ", err, log_suffix)
 
       else
-        ngx_log(ngx_DEBUG, _log_prefix, "sent config update to data plane", log_suffix)
+        ngx_log(ngx_DEBUG, _log_prefix, "sent config update to data plane with size: ", #deflated_payload, log_suffix)
       end
 
       ::continue::
@@ -509,10 +533,11 @@ local function push_config_loop(premature, self, push_config_semaphore, delay)
     return
   end
 
-  local ok, err = handle_export_deflated_reconfigure_payload(self)
-  if not ok then
-    ngx_log(ngx_ERR, _log_prefix, "unable to export initial config from database: ", err)
-  end
+  -- Can't pass dp_cname here
+  --local ok, err = handle_export_deflated_reconfigure_payload(self)
+  --if not ok then
+  --  ngx_log(ngx_ERR, _log_prefix, "unable to export initial config from database: ", err)
+  --end
 
   while not exiting() do
     local ok, err = push_config_semaphore:wait(1)

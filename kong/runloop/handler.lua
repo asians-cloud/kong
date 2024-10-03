@@ -51,6 +51,8 @@ local request_id_get    = request_id.get
 local escape            = require("kong.tools.uri").escape
 local encode            = require("string.buffer").encode
 local uuid              = require("kong.tools.uuid").uuid
+local PHASES            = require("kong.global").phases
+local kong_error_handlers = require "kong.error_handlers"
 
 local req_dyn_hook_run_hook = req_dyn_hook.run_hook
 
@@ -1119,6 +1121,16 @@ return {
 
       -- routing request
       local router = get_updated_router()
+
+      -- Detect host is IP
+      local cname_suffix = os.getenv('CNAME_SUFFIX') or ''
+      if string.find(var.host, cname_suffix) or string.find(var.host, "localhost") or utils.normalize_ip(var.host) then
+        if var.request_uri == "/ok" then
+          kong.ctx.shared.skip_log = true
+          kong.response.exit(200, "OK")
+        end
+      end
+
       local match_t = router:exec(ctx)
 
       if has_timing then
@@ -1132,7 +1144,12 @@ return {
           span:finish()
         end
 
-        return kong.response.error(404, "no Route matched with those values")
+        ctx.KONG_PHASE = PHASES.error
+        ctx.MESSAGE = "no Route matched with those values"
+        ctx.service = service
+        ctx.route = route
+        ngx.status = 425
+        return kong_error_handlers(ctx)
       end
 
       -- ends tracing span
@@ -1197,15 +1214,23 @@ return {
 
       local protocols = route.protocols
       if (protocols and protocols.https and not protocols.http and
-          forwarded_proto ~= "https")
+          forwarded_proto ~= "https" and sub(ctx.request_uri,1,string.len("/.well-known/acme-challenge/")) ~= "/.well-known/acme-challenge/")
       then
         local redirect_status_code = route.https_redirect_status_code or 426
 
         if redirect_status_code == 426 then
-          return kong.response.error(426, "Please use HTTPS protocol", {
-            ["Connection"] = "Upgrade",
-            ["Upgrade"]    = "TLS/1.2, HTTP/1.1",
-          })
+          ctx.KONG_PHASE = PHASES.error
+          ctx.MESSAGE = "Please use HTTPS protocol"
+          ctx.service = service
+          ctx.route = route
+          ngx.status = 426
+          ngx.header["Connection"] = "Upgrade"
+          ngx.headers["Upgrade"] = "TLS/1.2, HTTP/1.1"
+          return kong_error_handlers(ctx)
+          -- return kong.response.error(426, "Please use HTTPS protocol", {
+          --   ["Connection"] = "Upgrade",
+          --   ["Upgrade"]    = "TLS/1.2, HTTP/1.1",
+          -- })
         end
 
         if redirect_status_code == 301
@@ -1213,6 +1238,8 @@ return {
         or redirect_status_code == 307
         or redirect_status_code == 308
         then
+          ctx.service = service
+          ctx.route = route
           header["Location"] = "https://" .. forwarded_host .. ctx.request_uri
           return kong.response.exit(redirect_status_code)
         end
@@ -1226,15 +1253,29 @@ return {
         if content_type and sub(content_type, 1, #"application/grpc") == "application/grpc" then
           if protocol_version ~= 2 then
             -- mismatch: non-http/2 request matched grpc route
-            return kong.response.error(426, "Please use HTTP2 protocol", {
-              ["connection"] = "Upgrade",
-              ["upgrade"]    = "HTTP/2",
-            })
+            --return kong.response.error(426, "Please use HTTP2 protocol", {
+            --  ["connection"] = "Upgrade",
+            --  ["upgrade"]    = "HTTP/2",
+            --})
+            ctx.KONG_PHASE = PHASES.error
+            ctx.MESSAGE = "Please use HTTP2 protocol"
+            ctx.service = service
+            ctx.route = route
+            ngx.status = 426
+            ngx.header["Connection"] = "Upgrade"
+            ngx.header["Upgrade"] = "HTTP/2"
+            return kong_error_handlers(ctx)
           end
 
         else
           -- mismatch: non-grpc request matched grpc route
-          return kong.response.error(415, "Non-gRPC request matched gRPC route")
+          ctx.KONG_PHASE = PHASES.error
+          ctx.MESSAGE = "Non-gRPC request matched gRPC route"
+          ctx.service = service
+          ctx.route = route
+          ngx.status = 415
+          return kong_error_handlers(ctx)
+          -- return kong.response.error(415, "Non-gRPC request matched gRPC route")
         end
 
         if not protocols.grpc and forwarded_proto ~= "https" then

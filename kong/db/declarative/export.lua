@@ -30,6 +30,23 @@ local function convert_nulls(tbl, from, to)
   return tbl
 end
 
+local function has_value (tab, val)
+  if tab == nil or val == nil then
+    return false
+  end
+  for _, value in ipairs(tab) do
+    -- For internal system should be the value of cname is _ and owner is _
+    if string.find(value, "_") and not string.find(value, "not_js_challenge") then
+      return true
+    end
+    if string.find(value, val) then
+      return true
+    end
+  end
+
+  return false
+end
+
 
 local function to_yaml_string(tbl)
   convert_nulls(tbl, null, lyaml.null)
@@ -95,7 +112,7 @@ local function end_transaction(db)
 end
 
 
-local function export_from_db_impl(emitter, skip_ws, skip_disabled_entities, expand_foreigns)
+local function export_from_db_impl(emitter, skip_ws, skip_disabled_entities, expand_foreigns, dp_cname)
   local schemas = {}
 
   local db = kong.db
@@ -124,6 +141,12 @@ local function export_from_db_impl(emitter, skip_ws, skip_disabled_entities, exp
 
   local disabled_services = {}
   local disabled_routes = {}
+  local skip_cname_services = {}
+  local skip_cname_upstreams = {}
+  local skip_cname_targets = {}
+  local skip_cname_certificates = {}
+  local skip_cname_routes = {}
+  local skip_cname_plugins = {}
   for i = 1, #sorted_schemas do
     local schema = sorted_schemas[i]
     if schema.db_export == false then
@@ -156,7 +179,27 @@ local function export_from_db_impl(emitter, skip_ws, skip_disabled_entities, exp
 
       elseif skip_disabled_entities and name == "routes" and row.service and
         disabled_services[row.service ~= null and row.service.id] then
-          disabled_routes[row.id] = true
+        disabled_routes[row.id] = true
+
+      elseif name == "routes" and row.tags ~= nil and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
+        -- Skip tags not match with cname suffix of the data plane node.
+        skip_cname_routes[row.id] = true
+
+      elseif name == "services" and row.tags ~= nil and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
+        -- Skip tags not match with cname suffix of the data plane node.
+        skip_cname_services[row.id] = true
+
+      elseif name == "certificates" and row.tags ~= nil and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
+        -- Skip tags not match with cname suffix of the data plane node.
+        skip_cname_certificates[row.id] = true
+
+      elseif name == "upstreams" and row.tags ~= nil and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
+        -- Skip tags not match with cname suffix of the data plane node
+        skip_cname_upstreams[row.id] = true
+
+      elseif name == "targets" and row.tags ~= nil and type(row.tags) == "table" and not has_value(row.tags, dp_cname) then
+        -- Skip tags not match with cname suffix of the data plane node
+        skip_cname_targets[row.id] = true
 
       elseif skip_disabled_entities and name == "plugins" and not row.enabled then
         goto skip_emit
@@ -167,7 +210,7 @@ local function export_from_db_impl(emitter, skip_ws, skip_disabled_entities, exp
           if type(row[foreign_name]) == "table" then
             local id = row[foreign_name].id
             if id ~= nil then
-              if disabled_services[id] or disabled_routes[id] then
+              if disabled_services[id] or disabled_routes[id] or skip_cname_services[id] or skip_cname_certificates[id] or skip_cname_upstreams[id] or skip_cname_targets[id] or skip_cname_routes[id] then
                 goto skip_emit
               end
               if not expand_foreigns then
@@ -256,7 +299,7 @@ function table_emitter.new()
 end
 
 
-local function export_config(skip_ws, skip_disabled_entities)
+local function export_config(skip_ws, skip_disabled_entities, dp_cname)
   -- default skip_ws=false and skip_disabled_services=true
   if skip_ws == nil then
     skip_ws = false
@@ -266,7 +309,7 @@ local function export_config(skip_ws, skip_disabled_entities)
     skip_disabled_entities = true
   end
 
-  return export_from_db_impl(table_emitter.new(), skip_ws, skip_disabled_entities)
+  return export_from_db_impl(table_emitter.new(), skip_ws, skip_disabled_entities, true, dp_cname)
 end
 
 
@@ -314,7 +357,7 @@ function proto_emitter.new()
 end
 
 
-local function export_config_proto(skip_ws, skip_disabled_entities)
+local function export_config_proto(skip_ws, skip_disabled_entities, dp_cname)
   -- default skip_ws=false and skip_disabled_services=true
   if skip_ws == nil then
     skip_ws = false
@@ -324,7 +367,7 @@ local function export_config_proto(skip_ws, skip_disabled_entities)
     skip_disabled_entities = true
   end
 
-  return export_from_db_impl(proto_emitter.new(), skip_ws, skip_disabled_entities, true)
+  return export_from_db_impl(proto_emitter.new(), skip_ws, skip_disabled_entities, true, dp_cname)
 end
 
 

@@ -623,6 +623,18 @@ local function list_migrations(migtable)
   return table.concat(list, " ")
 end
 
+local function check_sync_process()
+  local kong_sync_dict = ngx.shared.kong_sync
+  local is_sync = kong_sync_dict:get("is_sync")
+  while is_sync do
+    os.execute("sleep 5")
+    is_sync = kong_sync_dict:get("is_sync")
+    if not is_sync then
+      break
+    end
+  end
+end
+
 
 -- Kong public context handlers.
 -- @section kong_handlers
@@ -1012,6 +1024,14 @@ end
 function Kong.exit_worker()
   if process.type() ~= "privileged agent" and not is_control_plane(kong.configuration) then
     plugin_servers.stop()
+  end
+
+  if is_dbless(kong.configuration) then
+    check_sync_process()
+  end
+
+  if ngx.worker.exiting() then
+    check_sync_process()
   end
 end
 

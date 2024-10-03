@@ -253,11 +253,19 @@ local function init()
     upstream, err = upstreams.get_upstream_by_id(id)
     if upstream == nil or err then
       log(WARN, "failed loading upstream ", id, ": ", err)
+      goto skip_fetch_target
     end
 
     _, err = balancers.create_balancer(upstream)
     if err then
-      log(CRIT, "failed creating balancer for upstream ", upstream.name, ": ", err)
+      if upstream then
+        log(CRIT, "failed creating balancer for upstream ", upstream.name, ": ", err)
+      end
+    end
+
+    if upstream == nil then
+      log(CRIT, "upstream is nil value ")
+      goto skip_fetch_target
     end
 
     local target
@@ -265,6 +273,8 @@ local function init()
     if target == nil or err then
       log(WARN, "failed loading targets for upstream ", id, ": ", err)
     end
+
+    ::skip_fetch_target::
   end
 
   upstreams.update_balancer_state()

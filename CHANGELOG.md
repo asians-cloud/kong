@@ -13,6 +13,11 @@
 - [3.0.0](#300)
 - [Previous releases](#previous-releases)
 
+### Labeled dp
+- set configuration in dp node:
+  cluster_dp_labels =             filter-cname:123,filter-postfix:lw5.net  # ( all statements are in OR condition. Simple search now )
+
+
 ## Unreleased
 
 Individual unreleased changelog entries can be located at [changelog/unreleased](changelog/unreleased). They will be assembled into [CHANGELOG.md](CHANGELOG.md) once released.

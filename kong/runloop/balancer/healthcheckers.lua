@@ -423,6 +423,9 @@ function healthcheckers_M.stop_healthcheckers(delay)
     log(ERR, "[healthchecks] failed to retrieve all upstreams: ", err)
     return
   end
+  if upstreams.get_all_upstreams() == nil then
+    return
+  end
   for _, id in pairs(all_upstreams) do
     local balancer = balancers.get_balancer_by_id(id)
     if balancer then

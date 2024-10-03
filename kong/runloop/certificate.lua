@@ -6,7 +6,7 @@ local constants = require "kong.constants"
 local plugin_servers = require "kong.runloop.plugin_servers"
 local openssl_x509_store = require "resty.openssl.x509.store"
 local openssl_x509 = require "resty.openssl.x509"
-
+local utils = require "kong.tools.utils"
 
 local ngx_log     = ngx.log
 local ERR         = ngx.ERR
@@ -266,9 +266,55 @@ local function get_certificate(pk, sni_name)
 end
 
 
+local function remove_port_from_sni(sni)
+  local sni_without_port, _ = sni:match("(.+):([0-9]+)$")
+  if not sni_without_port then
+    return sni
+  end
+
+  return sni_without_port
+end
+
+local function domain_checker(sni)
+    return string.match(sni, '^[%d%a_.-]+$') ~= nil and -- check if the string only contains digits/letters/_/./-, one or more
+           string.sub(sni, 0, 1) ~= '.' and             -- check if the first char is not '.'
+           string.sub(sni, -1) ~= '.' and               -- check if the last char is not '.'
+           string.find(sni, '%.%.') == nil and          -- check if there are 2 consecutive dots in the string
+           string.find(sni, '%.') ~= nil                -- check if there is at least one dot
+end
+
+
+
+
+local function validate_sni(sni)
+  -- length of string must be greater than 2
+  if #sni < 2 then
+    return false
+  end
+
+  -- if it's a wildcard, remove the prefix
+  local _, without_prefix = sni:match("(%*%.)(.+)$")
+  if without_prefix then
+    sni = without_prefix
+  end
+
+  -- check if it's a valid domain name and that it's not an IP address
+  local is_ip = utils.normalize_ipv4(sni) or utils.normalize_ipv6(sni)
+  return domain_checker(sni) and not is_ip
+end
+
+
 local function find_certificate(sni)
   if not sni then
     log(DEBUG, "no SNI provided by client, serving default SSL certificate")
+    return default_cert_and_key
+  end
+
+  sni = remove_port_from_sni(sni)
+
+  -- check for SNI Attack
+  if not validate_sni(sni) then
+    log(ERR, "SNI Attack")
     return default_cert_and_key
   end
 
@@ -335,6 +381,11 @@ local function execute()
   if err then
     log(ERR, "could not retrieve SNI: ", err)
     return ngx_exit(ngx_ERROR)
+  end
+
+  -- Skip find_certificate if the SNI have '~' on the first char
+  if sn ~= nil and string.sub(sn, 1, 1) == '~' then
+    return
   end
 
   local cert_and_key, err = find_certificate(sn)
